@@ -10,6 +10,7 @@ class MultiHeadAttention(nn.Module):
 
         self.d_model = d_model 
         self.num_heads = num_heads 
+        self.d_k = d_model // num_heads
 
         self.query = nn.Linear(d_model, d_model)
         self.keys = nn.Linear(d_model, d_model)
@@ -20,7 +21,7 @@ class MultiHeadAttention(nn.Module):
     # Returns the output and attention layer
     # softmax(matmul(q, k) / scale by d_k ) 
     def attention(self, q, k, v, mask = None):
-        scores = torch.matmul(q, k.transepose(-2, -1)) / math.sqrt(self.d_k)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
 
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
@@ -46,7 +47,7 @@ class PositionWiseFFN(nn.Module):
         self.fc2 = nn.Linear(d_ff, d_model)
     
     def forward(self, X):
-        return self.fc2(F.relu(self.fc(1)))
+        return self.fc2(F.relu(self.fc1(X)))
 
 class TransformerBlock(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout = 0.1):
@@ -72,3 +73,5 @@ if __name__ == "__main__":
     model = TransformerBlock(d_model = 512, num_heads = 8, d_ff = 2048)
     x = torch.randn(16, 10, 512)
     output = model(x)
+
+    print(output)
