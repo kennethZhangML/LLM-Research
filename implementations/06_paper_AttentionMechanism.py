@@ -56,3 +56,4 @@ class Decoder(nn.Module):
         prediction = self.fc_out(output.squeeze(0))
 
         return prediction, hidden, cell 
+        
