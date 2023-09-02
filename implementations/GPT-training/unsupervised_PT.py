@@ -1,67 +1,63 @@
 import torch 
-import torch.nn as nn
-
-voc_size = 10000
-embedding_dim = 256
-context_window = 5
-num_layers = 4
-hidden_size = 512
+import torch.nn as nn 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, d_model, num_heads):
+    def __init__(self, d_model, num_heads, dim_ff):
         super(TransformerBlock, self).__init__()
-
-        self.multihead_attn = nn.MultiheadAttention(d_model, num_heads)
+        self.self_attn = nn.MultiheadAttention(d_model, num_heads)
 
         self.ff = nn.Sequential(
-            nn.Linear(d_model, hidden_size),
+            nn.Linear(d_model, dim_ff),
             nn.ReLU(),
-            nn.Linear(hidden_size, d_model)
+            nn.Linear(dim_ff, d_model)
         )
-        
-        self.layer_norm1 = nn.LayerNorm(d_model)
-        self.layer_norm2 = nn.LayerNorm(d_model)
-    
+
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+
     def forward(self, x):
-        attn_output, _ = self.multihead_attn(x, x, x)
+        attn_output, _ = self.self_attn(x, x, x)
         x = x + attn_output 
-        x = self.layer_norm1(x)
-
-        ff_out = self.ff(x)
-        x = x + ff_out 
-        x = self.layer_norm2(x)
+        x = self.norm1(x)
+        ff_output = self.ff(x)
+        x = x + ff_output 
+        x = self.norm2(x)
         return x 
+    
+class UnsupervisedPTModel(nn.Module):
+    def __init__(self, voc_size, d_model, num_head, dim_ff, num_layers, context_size):
+        super(UnsupervisedPTModel, self).__init__()
+        self.token_embedding = nn.Embedding(voc_size, d_model)
+        self.position_embedding = nn.Embedding(context_size, d_model)
 
-class LanguageModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, context_window, num_layers):
-        super(LanguageModel, self).__init__()
-        self.token_embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.position_embedding = nn.Embedding(context_window, embedding_dim)
+        self.transformer_layers = nn.ModuleList([
+            TransformerBlock(d_model, num_head, dim_ff)
+            for _ in range(num_layers)
+        ])
 
-        self.transformer_blocks = nn.ModuleList(
-            [TransformerBlock(embedding_dim, num_heads = 8) for _ in range(num_layers)]
-        )
+        self.output_layer = nn.Linear(d_model, voc_size)
 
-    def forward(self, input_sequence):
-        context_embeddings = self.token_embedding(input_sequence)
-        batch_size, seq_len, _ = context_embeddings.size()
-        position_ids = torch.arange(seq_len, dtype = torch.long, device = input_sequence.device)
-        position_embeddings = self.position_embedding(position_ids)
-
-        context_embeddings += position_embeddings
-
-        for transformer_block in self.transformer_blocks:
-            context_embeddings = transformer_block(context_embeddings)
-        return context_embeddings
-
+    def forward(self, context):
+        token_embedded = self.token_embedding(context)
+        position_ids = torch.arange(context.size(1), device = context.device).unsqueeze(0)
+        position_embedded = self.position_embedding(position_ids)
+        x = token_embedded + position_embedded
+        for transformer_layer in self.transformer_layers:
+            x = transformer_layer(x)
+        output = self.output_layer(x)
+        return output
+    
 if __name__ == "__main__":
-    batch_size = 32 
-    seq_len = 20 
-    input_data = torch.randint(0, voc_size, (batch_size, seq_len))
+    batch_size = 32
+    voc_size = 10000
+    d_model = 512 
+    num_head = 8
+    dim_ff = 2048 
+    num_layers = 6
+    context_size = 10 
 
-    model = LanguageModel(voc_size, embedding_dim, context_window, num_layers)
+    model = UnsupervisedPTModel(voc_size, d_model, num_head, dim_ff, num_layers, context_size)
+    input_data = torch.randint(0, voc_size, (batch_size, context_size))
     output = model(input_data)
-    print(output.shape)
 
-
-
+    print("Output: ", output)
